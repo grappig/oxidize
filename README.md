@@ -9,3 +9,14 @@ The main focus is:
 - running a program in an isolated environment;
 - keeping the program separate from the host system;
 - learning how resource limits affect a running process.
+
+## Current usage
+
+```text
+oxidize init <rootfs-path>
+oxidize run <program> [arguments...]
+```
+
+The `init` command creates the basic directories commonly found in a Linux
+root filesystem. It does not copy programs or provide isolation yet; those are
+later steps in the project.
