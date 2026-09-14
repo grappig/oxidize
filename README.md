@@ -14,9 +14,11 @@ The main focus is:
 
 ```text
 oxidize init <rootfs-path>
+oxidize inspect <rootfs-path>
 oxidize run <program> [arguments...]
 ```
 
-The `init` command creates the basic directories commonly found in a Linux
-root filesystem. It does not copy programs or provide isolation yet; those are
-later steps in the project.
+The `init` command creates the basic directories commonly found in a linux
+root filesystem. The `inspect` command checks whether those directories are
+present and reports anything missing. The project does not copy programs or
+provide isolation yet those are later steps.
