@@ -3,7 +3,8 @@ use std::path::PathBuf;
 pub const USAGE: &str = "\
 Usage:
   oxidize run <program> [arguments...]
-  oxidize init <rootfs-path>";
+  oxidize init <rootfs-path>
+  oxidize inspect <rootfs-path>";
 
 pub enum Command {
     Help,
@@ -14,12 +15,16 @@ pub enum Command {
     Init {
         path: PathBuf,
     },
+    Inspect {
+        path: PathBuf,
+    },
 }
 
 pub fn parse(arguments: &[String]) -> Result<Command, &'static str> {
     match arguments.get(1).map(String::as_str) {
         Some("run") => parse_run(arguments),
         Some("init") => parse_init(arguments),
+        Some("inspect") => parse_inspect(arguments),
         Some("--help") | Some("-h") | None => Ok(Command::Help),
         Some(_) => Err("Unknown command."),
     }
@@ -38,16 +43,30 @@ fn parse_run(arguments: &[String]) -> Result<Command, &'static str> {
 }
 
 fn parse_init(arguments: &[String]) -> Result<Command, &'static str> {
+    let path = parse_path_command(arguments, "init")?;
+    Ok(Command::Init { path })
+}
+
+fn parse_inspect(arguments: &[String]) -> Result<Command, &'static str> {
+    let path = parse_path_command(arguments, "inspect")?;
+    Ok(Command::Inspect { path })
+}
+
+fn parse_path_command(arguments: &[String], command: &str) -> Result<PathBuf, &'static str> {
     let path = arguments
         .get(2)
         .map(PathBuf::from)
         .ok_or("A rootfs path is required.")?;
 
     if arguments.len() > 3 {
-        return Err("The init command accepts exactly one rootfs path.");
+        return match command {
+            "init" => Err("The init command accepts exactly one rootfs path."),
+            "inspect" => Err("The inspect command accepts exactly one rootfs path."),
+            _ => Err("The command accepts exactly one rootfs path."),
+        };
     }
 
-    Ok(Command::Init { path })
+    Ok(path)
 }
 
 #[cfg(test)]
@@ -72,6 +91,7 @@ mod tests {
                 assert_eq!(arguments, ["hello"]);
             }
             Command::Init { .. } => panic!("expected run command"),
+            Command::Inspect { .. } => panic!("expected run command"),
             Command::Help => panic!("expected run command"),
         }
     }
@@ -83,7 +103,20 @@ mod tests {
         match command {
             Command::Init { path } => assert_eq!(path, PathBuf::from("rootfs")),
             Command::Run { .. } => panic!("expected init command"),
+            Command::Inspect { .. } => panic!("expected init command"),
             Command::Help => panic!("expected init command"),
+        }
+    }
+
+    #[test]
+    fn parses_inspect_command() {
+        let command = parse(&arguments(&["oxidize", "inspect", "rootfs"])).unwrap();
+
+        match command {
+            Command::Inspect { path } => assert_eq!(path, PathBuf::from("rootfs")),
+            Command::Run { .. } => panic!("expected inspect command"),
+            Command::Init { .. } => panic!("expected inspect command"),
+            Command::Help => panic!("expected inspect command"),
         }
     }
 
