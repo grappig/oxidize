@@ -1,7 +1,7 @@
 mod cli;
 mod rootfs;
 
-use std::{env, process::Command};
+use std::{env, path::Path, process::Command};
 
 fn main() {
     let arguments: Vec<String> = env::args().collect();
@@ -9,9 +9,10 @@ fn main() {
     match cli::parse(&arguments) {
         Ok(cli::Command::Help) => println!("{}", cli::USAGE),
         Ok(cli::Command::Run {
-               program,
-               arguments,
-           }) => run_program(&program, &arguments),
+            rootfs,
+            program,
+            arguments,
+        }) => run_program(rootfs.as_deref(), &program, &arguments),
         Ok(cli::Command::Init { path }) => match rootfs::initialize(&path) {
             Ok(()) => println!("Created rootfs layout at '{}'.", path.display()),
             Err(error) => {
@@ -43,11 +44,31 @@ fn main() {
     }
 }
 
-fn run_program(program: &str, arguments: &[String]) -> ! {
-    let status = match Command::new(program).args(arguments).status() {
+fn run_program(rootfs: Option<&Path>, program: &str, arguments: &[String]) -> ! {
+    #[cfg(unix)]
+    let mut command = match rootfs {
+        Some(path) => {
+            let mut command = Command::new("chroot");
+            command.arg(path).arg(program);
+            command
+        }
+        None => Command::new(program),
+    };
+
+    #[cfg(not(unix))]
+    let mut command = match rootfs {
+        Some(_) => {
+            eprintln!("Running inside a rootfs is only supported on Unix.");
+            std::process::exit(1);
+        }
+        None => Command::new(program),
+    };
+
+    let command_name = if rootfs.is_some() { "chroot" } else { program };
+    let status = match command.args(arguments).status() {
         Ok(status) => status,
         Err(error) => {
-            eprintln!("Could not start '{program}': {error}");
+            eprintln!("Could not start '{command_name}': {error}");
             std::process::exit(1);
         }
     };
