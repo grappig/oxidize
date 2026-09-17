@@ -3,12 +3,14 @@ use std::path::PathBuf;
 pub const USAGE: &str = "\
 Usage:
   oxidize run <program> [arguments...]
+  oxidize run --rootfs <rootfs-path> <program> [arguments...]
   oxidize init <rootfs-path>
   oxidize inspect <rootfs-path>";
 
 pub enum Command {
     Help,
     Run {
+        rootfs: Option<PathBuf>,
         program: String,
         arguments: Vec<String>,
     },
@@ -31,14 +33,26 @@ pub fn parse(arguments: &[String]) -> Result<Command, &'static str> {
 }
 
 fn parse_run(arguments: &[String]) -> Result<Command, &'static str> {
+    let (rootfs, program_index) = match arguments.get(2).map(String::as_str) {
+        Some("--rootfs") => {
+            let path = arguments
+                .get(3)
+                .map(PathBuf::from)
+                .ok_or("A rootfs path is required.")?;
+            (Some(path), 4)
+        }
+        _ => (None, 2),
+    };
+
     let program = arguments
-        .get(2)
+        .get(program_index)
         .cloned()
         .ok_or("A program to run is required.")?;
 
     Ok(Command::Run {
+        rootfs,
         program,
-        arguments: arguments[3..].to_vec(),
+        arguments: arguments[program_index + 1..].to_vec(),
     })
 }
 
@@ -71,7 +85,7 @@ fn parse_path_command(arguments: &[String], command: &str) -> Result<PathBuf, &'
 
 #[cfg(test)]
 mod tests {
-    use super::{parse, Command};
+    use super::{Command, parse};
     use std::path::PathBuf;
 
     fn arguments(values: &[&str]) -> Vec<String> {
@@ -84,10 +98,40 @@ mod tests {
 
         match command {
             Command::Run {
+                rootfs,
                 program,
                 arguments,
             } => {
+                assert!(rootfs.is_none());
                 assert_eq!(program, "echo");
+                assert_eq!(arguments, ["hello"]);
+            }
+            Command::Init { .. } => panic!("expected run command"),
+            Command::Inspect { .. } => panic!("expected run command"),
+            Command::Help => panic!("expected run command"),
+        }
+    }
+
+    #[test]
+    fn parses_run_command_with_rootfs() {
+        let command = parse(&arguments(&[
+            "oxidize",
+            "run",
+            "--rootfs",
+            "rootfs",
+            "/bin/echo",
+            "hello",
+        ]))
+        .unwrap();
+
+        match command {
+            Command::Run {
+                rootfs,
+                program,
+                arguments,
+            } => {
+                assert_eq!(rootfs, Some(PathBuf::from("rootfs")));
+                assert_eq!(program, "/bin/echo");
                 assert_eq!(arguments, ["hello"]);
             }
             Command::Init { .. } => panic!("expected run command"),
