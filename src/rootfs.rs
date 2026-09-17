@@ -1,9 +1,8 @@
-use std::{
-    fs, io,
-    path::Path,
-};
+use std::{fs, io, path::Path};
 
-const DIRECTORIES: [&str; 9] = ["bin", "dev", "etc", "proc", "run", "sys", "tmp", "usr", "var"];
+const DIRECTORIES: [&str; 9] = [
+    "bin", "dev", "etc", "proc", "run", "sys", "tmp", "usr", "var",
+];
 
 pub fn initialize(path: &Path) -> io::Result<()> {
     for directory in DIRECTORIES {
@@ -47,7 +46,7 @@ pub fn inspect(path: &Path) -> io::Result<Inspection> {
 
 #[cfg(test)]
 mod tests {
-    use super::{initialize, inspect, DIRECTORIES};
+    use super::{DIRECTORIES, initialize, inspect};
     use std::{fs, path::PathBuf};
 
     #[test]
