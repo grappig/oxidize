@@ -60,10 +60,13 @@ fn parse_run(arguments: &[String]) -> Result<Command, &'static str> {
                 if rootfs.is_some() {
                     return Err("The --rootfs option can only be given once.");
                 }
-                let path = arguments
+                let value = arguments
                     .get(program_index + 1)
-                    .map(PathBuf::from)
                     .ok_or("A rootfs path is required.")?;
+                if matches!(value.as_str(), "--rootfs" | "--isolate") {
+                    return Err("A rootfs path is required.");
+                }
+                let path = PathBuf::from(value);
                 rootfs = Some(path);
                 program_index += 2;
             }
