@@ -15,8 +15,7 @@ The main focus is:
 ```text
 oxidize init <rootfs-path>
 oxidize inspect <rootfs-path>
-oxidize run <program> [arguments...]
-oxidize run --rootfs <rootfs-path> <program> [arguments...]
+oxidize run [--rootfs <rootfs-path>] [--isolate] <program> [arguments...]
 ```
 
 The `init` command creates the basic directories commonly found in a linux
@@ -26,13 +25,23 @@ program on the host. On Unix, the `--rootfs` form starts it with that
 directory as its filesystem root. The rootfs must already contain the
 program and any files it needs.
 
+On linux, `--isolate` runs the program in its own PID, mount, UTS and IPC
+namespaces. Inside, the program is PID 1, and changing the hostname or
+mounting something does not affect the host. This needs root. The 2 options
+can be used together:
+```text
+sudo oxidize run --isolate sh -c 'echo $$'
+sudo oxidize run --rootfs <rootfs-path> --isolate /bin/sh
+```
+The first command prints `1`. `/proc` is not mounted again yet, so `ps` still shows
+the hosts processes.
+
 ## What the code does not do yet
 
 Although the project is learning how containers work, the current code is
 still only the beginning. It does not yet:
 
-- create linux namespaces
-- isolate process IDs
+- create network, user or cgroup namespaces
 - limit memory or CPU
 - mount `/proc`, `/sys`, or `/dev`
 - set up networking

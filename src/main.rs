@@ -1,4 +1,6 @@
 mod cli;
+#[cfg(target_os = "linux")]
+mod namespaces;
 mod rootfs;
 
 use std::{env, path::Path, process::Command};
@@ -10,9 +12,10 @@ fn main() {
         Ok(cli::Command::Help) => println!("{}", cli::USAGE),
         Ok(cli::Command::Run {
             rootfs,
+            isolate,
             program,
             arguments,
-        }) => run_program(rootfs.as_deref(), &program, &arguments),
+        }) => run_program(rootfs.as_deref(), isolate, &program, &arguments),
         Ok(cli::Command::Init { path }) => initialize_rootfs(&path),
         Ok(cli::Command::Inspect { path }) => inspect_rootfs(&path),
         Err(error) => {
@@ -59,7 +62,11 @@ fn inspect_rootfs(path: &Path) {
     std::process::exit(1);
 }
 
-fn run_program(rootfs: Option<&Path>, program: &str, arguments: &[String]) -> ! {
+fn run_program(rootfs: Option<&Path>, isolate: bool, program: &str, arguments: &[String]) -> ! {
+    if isolate {
+        enter_new_namespaces();
+    }
+
     let (mut command, command_name) = match rootfs {
         Some(path) => (rootfs_command(path, program), "chroot"),
         None => (Command::new(program), program),
@@ -82,4 +89,16 @@ fn rootfs_command(rootfs: &Path, program: &str) -> Command {
 #[cfg(not(unix))]
 fn rootfs_command(_rootfs: &Path, _program: &str) -> Command {
     fail("Running inside a rootfs is only supported on Unix.");
+}
+
+#[cfg(target_os = "linux")]
+fn enter_new_namespaces() {
+    if let Err(error) = namespaces::unshare() {
+        fail(&format!("Could not create namespaces: {error}"));
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+fn enter_new_namespaces() {
+    fail("Namespace isolation is only supported on Linux.");
 }
