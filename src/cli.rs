@@ -7,6 +7,7 @@ Usage:
   oxidize init <rootfs-path>
   oxidize inspect <rootfs-path>";
 
+#[derive(Debug, PartialEq, Eq)]
 pub enum Command {
     Help,
     Run {
@@ -25,8 +26,20 @@ pub enum Command {
 pub fn parse(arguments: &[String]) -> Result<Command, &'static str> {
     match arguments.get(1).map(String::as_str) {
         Some("run") => parse_run(arguments),
-        Some("init") => parse_init(arguments),
-        Some("inspect") => parse_inspect(arguments),
+        Some("init") => {
+            let path = parse_rootfs_path(
+                arguments,
+                "The init command accepts exactly one rootfs path.",
+            )?;
+            Ok(Command::Init { path })
+        }
+        Some("inspect") => {
+            let path = parse_rootfs_path(
+                arguments,
+                "The inspect command accepts exactly one rootfs path.",
+            )?;
+            Ok(Command::Inspect { path })
+        }
         Some("--help") | Some("-h") | None => Ok(Command::Help),
         Some(_) => Err("Unknown command."),
     }
@@ -56,28 +69,17 @@ fn parse_run(arguments: &[String]) -> Result<Command, &'static str> {
     })
 }
 
-fn parse_init(arguments: &[String]) -> Result<Command, &'static str> {
-    let path = parse_path_command(arguments, "init")?;
-    Ok(Command::Init { path })
-}
-
-fn parse_inspect(arguments: &[String]) -> Result<Command, &'static str> {
-    let path = parse_path_command(arguments, "inspect")?;
-    Ok(Command::Inspect { path })
-}
-
-fn parse_path_command(arguments: &[String], command: &str) -> Result<PathBuf, &'static str> {
+fn parse_rootfs_path(
+    arguments: &[String],
+    too_many_arguments: &'static str,
+) -> Result<PathBuf, &'static str> {
     let path = arguments
         .get(2)
         .map(PathBuf::from)
         .ok_or("A rootfs path is required.")?;
 
     if arguments.len() > 3 {
-        return match command {
-            "init" => Err("The init command accepts exactly one rootfs path."),
-            "inspect" => Err("The inspect command accepts exactly one rootfs path."),
-            _ => Err("The command accepts exactly one rootfs path."),
-        };
+        return Err(too_many_arguments);
     }
 
     Ok(path)
@@ -88,84 +90,107 @@ mod tests {
     use super::{Command, parse};
     use std::path::PathBuf;
 
-    fn arguments(values: &[&str]) -> Vec<String> {
-        values.iter().map(|value| (*value).to_owned()).collect()
+    fn parse_values(values: &[&str]) -> Result<Command, &'static str> {
+        let arguments: Vec<String> = values.iter().map(|value| (*value).to_owned()).collect();
+        parse(&arguments)
+    }
+
+    #[test]
+    fn parses_help() {
+        assert_eq!(parse_values(&["oxidize"]), Ok(Command::Help));
+        assert_eq!(parse_values(&["oxidize", "--help"]), Ok(Command::Help));
+        assert_eq!(parse_values(&["oxidize", "-h"]), Ok(Command::Help));
     }
 
     #[test]
     fn parses_run_command() {
-        let command = parse(&arguments(&["oxidize", "run", "echo", "hello"])).unwrap();
-
-        match command {
-            Command::Run {
-                rootfs,
-                program,
-                arguments,
-            } => {
-                assert!(rootfs.is_none());
-                assert_eq!(program, "echo");
-                assert_eq!(arguments, ["hello"]);
-            }
-            Command::Init { .. } => panic!("expected run command"),
-            Command::Inspect { .. } => panic!("expected run command"),
-            Command::Help => panic!("expected run command"),
-        }
+        assert_eq!(
+            parse_values(&["oxidize", "run", "echo", "hello"]),
+            Ok(Command::Run {
+                rootfs: None,
+                program: "echo".to_owned(),
+                arguments: vec!["hello".to_owned()],
+            })
+        );
     }
 
     #[test]
     fn parses_run_command_with_rootfs() {
-        let command = parse(&arguments(&[
-            "oxidize",
-            "run",
-            "--rootfs",
-            "rootfs",
-            "/bin/echo",
-            "hello",
-        ]))
-        .unwrap();
-
-        match command {
-            Command::Run {
-                rootfs,
-                program,
-                arguments,
-            } => {
-                assert_eq!(rootfs, Some(PathBuf::from("rootfs")));
-                assert_eq!(program, "/bin/echo");
-                assert_eq!(arguments, ["hello"]);
-            }
-            Command::Init { .. } => panic!("expected run command"),
-            Command::Inspect { .. } => panic!("expected run command"),
-            Command::Help => panic!("expected run command"),
-        }
+        assert_eq!(
+            parse_values(&["oxidize", "run", "--rootfs", "rootfs", "/bin/echo", "hello",]),
+            Ok(Command::Run {
+                rootfs: Some(PathBuf::from("rootfs")),
+                program: "/bin/echo".to_owned(),
+                arguments: vec!["hello".to_owned()],
+            })
+        );
     }
 
     #[test]
     fn parses_init_command() {
-        let command = parse(&arguments(&["oxidize", "init", "rootfs"])).unwrap();
-
-        match command {
-            Command::Init { path } => assert_eq!(path, PathBuf::from("rootfs")),
-            Command::Run { .. } => panic!("expected init command"),
-            Command::Inspect { .. } => panic!("expected init command"),
-            Command::Help => panic!("expected init command"),
-        }
+        assert_eq!(
+            parse_values(&["oxidize", "init", "rootfs"]),
+            Ok(Command::Init {
+                path: PathBuf::from("rootfs"),
+            })
+        );
     }
 
     #[test]
     fn parses_inspect_command() {
-        let command = parse(&arguments(&["oxidize", "inspect", "rootfs"])).unwrap();
+        assert_eq!(
+            parse_values(&["oxidize", "inspect", "rootfs"]),
+            Ok(Command::Inspect {
+                path: PathBuf::from("rootfs"),
+            })
+        );
+    }
 
-        match command {
-            Command::Inspect { path } => assert_eq!(path, PathBuf::from("rootfs")),
-            Command::Run { .. } => panic!("expected inspect command"),
-            Command::Init { .. } => panic!("expected inspect command"),
-            Command::Help => panic!("expected inspect command"),
-        }
+    #[test]
+    fn rejects_unknown_command() {
+        assert_eq!(
+            parse_values(&["oxidize", "launch"]),
+            Err("Unknown command.")
+        );
+    }
+
+    #[test]
+    fn rejects_run_without_program() {
+        assert_eq!(
+            parse_values(&["oxidize", "run"]),
+            Err("A program to run is required.")
+        );
+        assert_eq!(
+            parse_values(&["oxidize", "run", "--rootfs", "rootfs"]),
+            Err("A program to run is required.")
+        );
+    }
+
+    #[test]
+    fn rejects_run_with_missing_rootfs_path() {
+        assert_eq!(
+            parse_values(&["oxidize", "run", "--rootfs"]),
+            Err("A rootfs path is required.")
+        );
     }
 
     #[test]
     fn rejects_missing_init_path() {
-        assert!(parse(&arguments(&["oxidize", "init"])).is_err());
+        assert_eq!(
+            parse_values(&["oxidize", "init"]),
+            Err("A rootfs path is required.")
+        );
+    }
+
+    #[test]
+    fn rejects_extra_rootfs_paths() {
+        assert_eq!(
+            parse_values(&["oxidize", "init", "a", "b"]),
+            Err("The init command accepts exactly one rootfs path.")
+        );
+        assert_eq!(
+            parse_values(&["oxidize", "inspect", "a", "b"]),
+            Err("The inspect command accepts exactly one rootfs path.")
+        );
     }
 }

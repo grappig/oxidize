@@ -13,30 +13,8 @@ fn main() {
             program,
             arguments,
         }) => run_program(rootfs.as_deref(), &program, &arguments),
-        Ok(cli::Command::Init { path }) => match rootfs::initialize(&path) {
-            Ok(()) => println!("Created rootfs layout at '{}'.", path.display()),
-            Err(error) => {
-                eprintln!("Could not create rootfs '{}': {error}", path.display());
-                std::process::exit(1);
-            }
-        },
-        Ok(cli::Command::Inspect { path }) => match rootfs::inspect(&path) {
-            Ok(report) if report.is_valid() => {
-                println!("Rootfs '{}' is valid.", path.display());
-            }
-            Ok(report) => {
-                println!("Rootfs '{}' is incomplete.", path.display());
-                println!("Missing directories:");
-                for directory in report.missing_directories() {
-                    println!("  - {directory}");
-                }
-                std::process::exit(1);
-            }
-            Err(error) => {
-                eprintln!("Could not inspect rootfs '{}': {error}", path.display());
-                std::process::exit(1);
-            }
-        },
+        Ok(cli::Command::Init { path }) => initialize_rootfs(&path),
+        Ok(cli::Command::Inspect { path }) => inspect_rootfs(&path),
         Err(error) => {
             eprintln!("{error}\n\n{}", cli::USAGE);
             std::process::exit(2);
@@ -44,34 +22,64 @@ fn main() {
     }
 }
 
+fn fail(message: &str) -> ! {
+    eprintln!("{message}");
+    std::process::exit(1);
+}
+
+fn initialize_rootfs(path: &Path) {
+    if let Err(error) = rootfs::initialize(path) {
+        fail(&format!(
+            "Could not create rootfs '{}': {error}",
+            path.display()
+        ));
+    }
+
+    println!("Created rootfs layout at '{}'.", path.display());
+}
+
+fn inspect_rootfs(path: &Path) {
+    let report = rootfs::inspect(path).unwrap_or_else(|error| {
+        fail(&format!(
+            "Could not inspect rootfs '{}': {error}",
+            path.display()
+        ))
+    });
+
+    if report.is_valid() {
+        println!("Rootfs '{}' is valid.", path.display());
+        return;
+    }
+
+    println!("Rootfs '{}' is incomplete.", path.display());
+    println!("Missing directories:");
+    for directory in report.missing_directories() {
+        println!("  - {directory}");
+    }
+    std::process::exit(1);
+}
+
 fn run_program(rootfs: Option<&Path>, program: &str, arguments: &[String]) -> ! {
-    #[cfg(unix)]
-    let mut command = match rootfs {
-        Some(path) => {
-            let mut command = Command::new("chroot");
-            command.arg(path).arg(program);
-            command
-        }
-        None => Command::new(program),
+    let (mut command, command_name) = match rootfs {
+        Some(path) => (rootfs_command(path, program), "chroot"),
+        None => (Command::new(program), program),
     };
 
-    #[cfg(not(unix))]
-    let mut command = match rootfs {
-        Some(_) => {
-            eprintln!("Running inside a rootfs is only supported on Unix.");
-            std::process::exit(1);
-        }
-        None => Command::new(program),
-    };
-
-    let command_name = if rootfs.is_some() { "chroot" } else { program };
-    let status = match command.args(arguments).status() {
-        Ok(status) => status,
-        Err(error) => {
-            eprintln!("Could not start '{command_name}': {error}");
-            std::process::exit(1);
-        }
-    };
+    let status = command.args(arguments).status().unwrap_or_else(|error| {
+        fail(&format!("Could not start '{command_name}': {error}"));
+    });
 
     std::process::exit(status.code().unwrap_or(1));
+}
+
+#[cfg(unix)]
+fn rootfs_command(rootfs: &Path, program: &str) -> Command {
+    let mut command = Command::new("chroot");
+    command.arg(rootfs).arg(program);
+    command
+}
+
+#[cfg(not(unix))]
+fn rootfs_command(_rootfs: &Path, _program: &str) -> Command {
+    fail("Running inside a rootfs is only supported on Unix.");
 }
