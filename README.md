@@ -34,7 +34,7 @@ sudo oxidize run --isolate sh -c 'echo $$'
 sudo oxidize run --rootfs <rootfs-path> --isolate /bin/sh
 ```
 The first command prints `1`. `/proc` is not mounted again yet, so `ps` still shows
-the hosts processes.
+the host's processes.
 
 ## What the code does not do yet
 
