@@ -47,51 +47,64 @@ pub fn inspect(path: &Path) -> io::Result<Inspection> {
 #[cfg(test)]
 mod tests {
     use super::{DIRECTORIES, initialize, inspect};
-    use std::{fs, path::PathBuf};
+    use std::{
+        fs,
+        path::{Path, PathBuf},
+    };
+
+    struct TestDirectory(PathBuf);
+
+    impl TestDirectory {
+        fn new(name: &str) -> Self {
+            let path = Path::new("target").join(name);
+            if path.exists() {
+                fs::remove_dir_all(&path).unwrap();
+            }
+            Self(path)
+        }
+    }
+
+    impl Drop for TestDirectory {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
 
     #[test]
     fn creates_the_standard_directory_layout() {
-        let path = PathBuf::from("target/test-rootfs");
-        if path.exists() {
-            fs::remove_dir_all(&path).unwrap();
+        let directory = TestDirectory::new("test-rootfs");
+
+        initialize(&directory.0).unwrap();
+
+        for name in DIRECTORIES {
+            assert!(directory.0.join(name).is_dir());
         }
-
-        initialize(&path).unwrap();
-
-        for directory in DIRECTORIES {
-            assert!(path.join(directory).is_dir());
-        }
-
-        fs::remove_dir_all(path).unwrap();
     }
 
     #[test]
     fn reports_an_initialized_rootfs_as_valid() {
-        let path = PathBuf::from("target/test-rootfs-valid");
-        if path.exists() {
-            fs::remove_dir_all(&path).unwrap();
-        }
+        let directory = TestDirectory::new("test-rootfs-valid");
 
-        initialize(&path).unwrap();
+        initialize(&directory.0).unwrap();
 
-        let report = inspect(&path).unwrap();
-        assert!(report.is_valid());
-
-        fs::remove_dir_all(path).unwrap();
+        assert!(inspect(&directory.0).unwrap().is_valid());
     }
 
     #[test]
     fn reports_missing_directories() {
-        let path = PathBuf::from("target/test-rootfs-incomplete");
-        if path.exists() {
-            fs::remove_dir_all(&path).unwrap();
-        }
-        fs::create_dir_all(path.join("bin")).unwrap();
+        let directory = TestDirectory::new("test-rootfs-incomplete");
+        fs::create_dir_all(directory.0.join("bin")).unwrap();
 
-        let report = inspect(&path).unwrap();
+        let report = inspect(&directory.0).unwrap();
         assert!(!report.is_valid());
         assert!(report.missing_directories().contains(&"etc"));
+        assert!(!report.missing_directories().contains(&"bin"));
+    }
 
-        fs::remove_dir_all(path).unwrap();
+    #[test]
+    fn fails_to_inspect_a_missing_rootfs() {
+        let directory = TestDirectory::new("test-rootfs-missing");
+
+        assert!(inspect(&directory.0).is_err());
     }
 }
