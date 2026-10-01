@@ -47,7 +47,7 @@ pub fn inspect(path: &Path) -> io::Result<Inspection> {
 pub fn proc_mount_point(path: &Path) -> io::Result<std::path::PathBuf> {
     let mount_point = path.join("proc");
 
-    if mount_point.is_dir() {
+    if fs::symlink_metadata(&mount_point).is_ok_and(|metadata| metadata.file_type().is_dir()) {
         return Ok(mount_point);
     }
 
@@ -62,7 +62,7 @@ pub fn proc_mount_point(path: &Path) -> io::Result<std::path::PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::{DIRECTORIES, initialize, inspect};
+    use super::{DIRECTORIES, initialize, inspect, proc_mount_point};
     use std::{
         fs,
         path::{Path, PathBuf},
@@ -131,8 +131,25 @@ mod tests {
         initialize(&directory.0).unwrap();
 
         assert_eq!(
-            super::proc_mount_point(&directory.0).unwrap(),
+            proc_mount_point(&directory.0).unwrap(),
             directory.0.join("proc")
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_symlinked_proc_mount_point() {
+        use std::os::unix::fs::symlink;
+
+        let directory = TestDirectory::new("test-rootfs-proc-symlink");
+        let rootfs = directory.0.join("rootfs");
+        let outside = directory.0.join("outside");
+
+        initialize(&rootfs).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::remove_dir(rootfs.join("proc")).unwrap();
+        symlink(&outside, rootfs.join("proc")).unwrap();
+
+        assert!(proc_mount_point(&rootfs).is_err());
     }
 }
