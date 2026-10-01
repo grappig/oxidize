@@ -44,6 +44,22 @@ pub fn inspect(path: &Path) -> io::Result<Inspection> {
     })
 }
 
+pub fn proc_mount_point(path: &Path) -> io::Result<std::path::PathBuf> {
+    let mount_point = path.join("proc");
+
+    if mount_point.is_dir() {
+        return Ok(mount_point);
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!(
+            "rootfs proc directory does not exist: {}",
+            mount_point.display()
+        ),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::{DIRECTORIES, initialize, inspect};
@@ -106,5 +122,17 @@ mod tests {
         let directory = TestDirectory::new("test-rootfs-missing");
 
         assert!(inspect(&directory.0).is_err());
+    }
+
+    #[test]
+    fn returns_the_proc_directory_as_a_mount_point() {
+        let directory = TestDirectory::new("test-rootfs-proc");
+
+        initialize(&directory.0).unwrap();
+
+        assert_eq!(
+            super::proc_mount_point(&directory.0).unwrap(),
+            directory.0.join("proc")
+        );
     }
 }
