@@ -44,9 +44,25 @@ pub fn inspect(path: &Path) -> io::Result<Inspection> {
     })
 }
 
+pub fn proc_mount_point(path: &Path) -> io::Result<std::path::PathBuf> {
+    let mount_point = path.join("proc");
+
+    if fs::symlink_metadata(&mount_point).is_ok_and(|metadata| metadata.file_type().is_dir()) {
+        return Ok(mount_point);
+    }
+
+    Err(io::Error::new(
+        io::ErrorKind::NotFound,
+        format!(
+            "rootfs proc directory does not exist: {}",
+            mount_point.display()
+        ),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{DIRECTORIES, initialize, inspect};
+    use super::{DIRECTORIES, initialize, inspect, proc_mount_point};
     use std::{
         fs,
         path::{Path, PathBuf},
@@ -106,5 +122,34 @@ mod tests {
         let directory = TestDirectory::new("test-rootfs-missing");
 
         assert!(inspect(&directory.0).is_err());
+    }
+
+    #[test]
+    fn returns_the_proc_directory_as_a_mount_point() {
+        let directory = TestDirectory::new("test-rootfs-proc");
+
+        initialize(&directory.0).unwrap();
+
+        assert_eq!(
+            proc_mount_point(&directory.0).unwrap(),
+            directory.0.join("proc")
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_a_symlinked_proc_mount_point() {
+        use std::os::unix::fs::symlink;
+
+        let directory = TestDirectory::new("test-rootfs-proc-symlink");
+        let rootfs = directory.0.join("rootfs");
+        let outside = directory.0.join("outside");
+
+        initialize(&rootfs).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        fs::remove_dir(rootfs.join("proc")).unwrap();
+        symlink(&outside, rootfs.join("proc")).unwrap();
+
+        assert!(proc_mount_point(&rootfs).is_err());
     }
 }
